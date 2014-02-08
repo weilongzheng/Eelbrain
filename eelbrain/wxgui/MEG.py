@@ -288,7 +288,7 @@ class SelectEpochs(eelfigure):
         index = np.zeros(self._ds.n_cases, dtype=bool)
         index[seg_IDs] = True
         index = np.logical_and(index, self._target)
-        mseg = self._data.summary(case=index)
+        mseg = self._data.aggregate(case=index)
         mseg = mseg.sub(sensor=sensor)
         return mseg
 

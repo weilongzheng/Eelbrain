@@ -2283,9 +2283,37 @@ class NDVar(object):
              "(with identical functionality).", DeprecationWarning)
         self.aggregate(X, func, name)
 
-    def aggregate(self, X, func=np.mean, name='{name}'):
-        """
-        Summarize data in each cell of ``X``.
+    def aggregate(self, *dims, **regions):
+        r"""Aggregate data in the NDVar
+
+        This method has two possible signature.
+
+          - Aggregating data over cases in specified cells is described in the
+            Parameters section below.
+          - Aggregating data over dimensions (or slices in dimensions) is
+            performed as described here:
+
+        dimension:
+            A whole dimension is specified as string argument. This
+            dimension is collapsed over the whole range.
+        slice:
+            A range within a dimension is specified through a keyword-argument.
+            Only the data in the specified range is included. Use like the
+            :py:meth:`.sub` method.
+
+        .. warning::
+            Data is collapsed over the different dimensions in turn using the
+            provided function with an axis argument. For certain functions
+            this is not equivalent to collapsing over several axes concurrently
+            (e.g., variance `np.var`).
+
+        **additional kwargs:**
+
+        func : callable
+            Function used to collapse the data. Needs to accept an "axis"
+            kwarg (default: np.mean)
+        name : str
+            Name for the new NDVar. Default: "{func}({name})".
 
         Parameters
         ----------
@@ -2303,30 +2331,107 @@ class NDVar(object):
         Returns
         -------
         aggregated_ndvar : NDVar
-            Returns an
+            NDVar containing the aggregated data.
+
+        Examples
+        --------
+        Assuming ``data`` is a normal time series. Get the average in a time
+        window::
+
+        >>> Y = data.aggregate(time=(.1, .2))
+
+        Get the peak in a time window::
+
+        >>> Y = data.aggregate(time=(.1, .2), func=np.max)
+
+        Assuming MEG is an NDVar with dimensions time and sensor. Get the
+        average across sensors 5, 6, and 8 in a time window::
+
+        >>> ROI = [5, 6, 8]
+        >>> Y = MEG.aggregate(sensor=ROI, time=(.1, .2))
+
+        Get the peak in the same data:
+
+        >>> ROI = [5, 6, 8]
+        >>> Y = MEG.aggregate(sensor=ROI, time=(.1, .2), func=np.max)
+
+        Get the RMS over all sensors
+
+        >>> MEG_RMS = MEG.aggregate('sensor', func=rms)
         """
-        if not self.has_case:
-            raise DimensionMismatchError("%r has no case dimension" % self)
-        if len(X) != len(self):
-            err = "Length mismatch: %i (Var) != %i (X)" % (len(self), len(X))
-            raise ValueError(err)
+        # special case:  aggregate cases in cells
+        if len(dims) and not isinstance(dims[0], basestring):
+            if not self.has_case:
+                raise DimensionMismatchError("%r has no case dimension" % self)
+            elif 'case' in regions:
+                raise ValueError("Case index specified twice")
+            X = dims[0]
+            if len(X) != len(self):
+                err = ("Length mismatch: %i (Var) != %i "
+                       "(X)" % (len(self), len(X)))
+                raise ValueError(err)
 
-        x = []
-        for cell in X.cells:
-            idx = (X == cell)
-            if np.sum(idx):
-                x_cell = self.x[idx]
-                x.append(func(x_cell, axis=0))
+            if len(dims) > 1:
+                func = dims[1]
+            else:
+                func = regions.pop('func',
+                                   self.info.get('summary_func', np.mean))
 
-        # update info for summary
-        info = self.info.copy()
-        if 'summary_info' in info:
-            info.update(info.pop('summary_info'))
+            if len(dims) > 2:
+                name = dims[2]
+            else:
+                name = regions.get('name', '{name}')
 
-        x = np.array(x)
-        name = name.format(name=self.name)
-        out = NDVar(x, self.dims, info=info, name=name)
-        return out
+            x = []
+            for cell in X.cells:
+                idx = (X == cell)
+                if np.sum(idx):
+                    x_cell = self.x[idx]
+                    x.append(func(x_cell, axis=0))
+
+            # update info for summary
+            info = self.info.copy()
+            if 'summary_info' in info:
+                info.update(info.pop('summary_info'))
+
+            x = np.array(x)
+            name = name.format(name=self.name)
+            out = NDVar(x, self.dims, info=info, name=name)
+            return out
+
+        # normal case: aggregate in dimensions
+        func = regions.pop('func', self.info.get('summary_func', np.mean))
+        name = regions.pop('name', '{func}({name})')
+        name = name.format(func=func.__name__, name=self.name)
+        if len(dims) + len(regions) == 0:
+            dims = ('case',)
+
+        if regions:
+            dims = list(dims)
+            for dim in sorted(regions):
+                if not np.isscalar(regions[dim]) and not dim in dims:
+                    dims.append(dim)
+            data = self.sub(**regions)
+            return data.aggregate(*dims, func=func, name=name)
+        else:
+            x = self.x
+            axes = [self._dim_2_ax[dim] for dim in np.unique(dims)]
+            dims = list(self.dims)
+            for axis in sorted(axes, reverse=True):
+                x = func(x, axis=axis)
+                dims.pop(axis)
+
+            # update info for summary
+            info = self.info.copy()
+            if 'summary_info' in info:
+                info.update(info.pop('summary_info'))
+
+            if len(dims) == 0:
+                return x
+            elif dims == ['case']:
+                return Var(x, name=name)
+            else:
+                return NDVar(x, dims=dims, name=name, info=info)
 
     def copy(self, name='{name}'):
         "returns a deep copy of itself"
@@ -2413,91 +2518,8 @@ class NDVar(object):
         return NDVar(x, dims, info=info, name=name)
 
     def summary(self, *dims, **regions):
-        r"""
-        Returns a new NDVar with specified dimensions collapsed.
-
-        .. warning::
-            Data is collapsed over the different dimensions in turn using the
-            provided function with an axis argument. For certain functions
-            this is not equivalent to collapsing over several axes concurrently
-            (e.g., np.var).
-
-        dimension:
-            A whole dimension is specified as string argument. This
-            dimension is collapsed over the whole range.
-        range:
-            A range within a dimension is specified through a keyword-argument.
-            Only the data in the specified range is included. Use like the
-            :py:meth:`.sub` method.
-
-
-        **additional kwargs:**
-
-        func : callable
-            Function used to collapse the data. Needs to accept an "axis"
-            kwarg (default: np.mean)
-        name : str
-            Name for the new NDVar. Default: "{func}({name})".
-
-
-        Examples
-        --------
-
-        Assuming ``data`` is a normal time series. Get the average in a time
-        window::
-
-            >>> Y = data.summary(time=(.1, .2))
-
-        Get the peak in a time window::
-
-            >>> Y = data.summary(time=(.1, .2), func=np.max)
-
-        Assuming MEG is an NDVar with dimensions time and sensor. Get the
-        average across sensors 5, 6, and 8 in a time window::
-
-            >>> ROI = [5, 6, 8]
-            >>> Y = MEG.summary(sensor=ROI, time=(.1, .2))
-
-        Get the peak in the same data:
-
-            >>> ROI = [5, 6, 8]
-            >>> Y = MEG.summary(sensor=ROI, time=(.1, .2), func=np.max)
-
-        Get the RMS over all sensors
-
-            >>> MEG_RMS = MEG.summary('sensor', func=rms)
-
-        """
-        func = regions.pop('func', self.info.get('summary_func', np.mean))
-        name = regions.pop('name', '{func}({name})')
-        name = name.format(func=func.__name__, name=self.name)
-        if len(dims) + len(regions) == 0:
-            dims = ('case',)
-
-        if regions:
-            dims = list(dims)
-            dims.extend(dim for dim in regions if not np.isscalar(regions[dim]))
-            data = self.sub(**regions)
-            return data.summary(*dims, func=func, name=name)
-        else:
-            x = self.x
-            axes = [self._dim_2_ax[dim] for dim in np.unique(dims)]
-            dims = list(self.dims)
-            for axis in sorted(axes, reverse=True):
-                x = func(x, axis=axis)
-                dims.pop(axis)
-
-            # update info for summary
-            info = self.info.copy()
-            if 'summary_info' in info:
-                info.update(info.pop('summary_info'))
-
-            if len(dims) == 0:
-                return x
-            elif dims == ['case']:
-                return Var(x, name=name)
-            else:
-                return NDVar(x, dims=dims, name=name, info=info)
+        "Deprecated. Use .aggregate() instead with the same signature."
+        return self.aggregate(*dims, **regions)
 
     def sub(self, **kwargs):
         """Retrieve a slice through the NDVar.

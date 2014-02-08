@@ -579,9 +579,9 @@ def unpack_epochs_arg(Y, ndim, Xax=None, ds=None, levels=1):
             if ndvar.ndim == ndim + 1:
                 if ndvar.has_case:
                     if len(ndvar) == 1:
-                        ndvar = ndvar.summary(name='{name}')
+                        ndvar = ndvar.aggregate(name='{name}')
                     else:
-                        ndvar = ndvar.summary()
+                        ndvar = ndvar.aggregate()
 
             if ndvar.ndim != ndim:
                 err = ("Plot requires ndim=%i; %r ndim==%i" %

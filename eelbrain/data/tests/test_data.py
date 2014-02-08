@@ -263,9 +263,9 @@ def test_ndvar():
     assert_equal(x.sub(case=1, sensor='4').ndim, 1)
 
     # baseline correction
-    x_bl = x - x.summary(time=(None, 0))
+    x_bl = x - x.aggregate(time=(None, 0))
     # assert that the baseline is 0
-    bl = x_bl.summary('case', 'sensor', time=(None, 0))
+    bl = x_bl.aggregate('case', 'sensor', time=(None, 0))
     ok_(np.abs(bl) < 1e-10, "Baseline correction")
 
 

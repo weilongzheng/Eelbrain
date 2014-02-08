@@ -78,7 +78,7 @@ def dspm(source_estimate, fmin=13, fmid=18, fmax=22, surf='smoothwm',
     lut[mid_p:, 3] = 255
 
     if source_estimate.has_case:
-        source_estimate = source_estimate.summary()
+        source_estimate = source_estimate.aggregate()
 
     return STC(source_estimate, lut, min=-fmax, max=fmax, surf=surf,
                colorbar=False, hemi=hemi)
@@ -147,7 +147,7 @@ def activation(source_estimate, a_thresh=None, act_max=None, surf='smoothwm',
 
     lut = colorize_activation(a_thresh=a_thresh, act_max=act_max)
     if source_estimate.has_case:
-        source_estimate = source_estimate.summary()
+        source_estimate = source_estimate.aggregate()
 
     plot = STC(source_estimate, colormap=lut, min=-act_max, max=act_max,
                colorbar=False, surf=surf, hemi=hemi)

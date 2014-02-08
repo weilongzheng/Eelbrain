@@ -203,7 +203,7 @@ def rm_baseline(ndvar, tstart=None, tend=0, name='{name}'):
 
     """
     subdata = ndvar.sub(time=(tstart, tend))
-    baseline = subdata.summary('time')
+    baseline = subdata.aggregate('time')
 
     t_ax = subdata.get_axis('time')
     index = (slice(None),) * t_ax + (None,)

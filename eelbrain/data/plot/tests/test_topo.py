@@ -10,9 +10,9 @@ def test_plot_topomap():
     "Test plot.Topomap"
     plot.configure_backend(False, False)
     ds = datasets.get_rand(utsnd=True)
-    p = plot.Topomap('utsnd.summary(time=(0.075, 0.125))', ds=ds)
+    p = plot.Topomap('utsnd.aggregate(time=(0.075, 0.125))', ds=ds)
     p.close()
-    p = plot.Topomap('utsnd.summary(time=(0.075, 0.125))', 'A%B', ds=ds)
+    p = plot.Topomap('utsnd.aggregate(time=(0.075, 0.125))', 'A%B', ds=ds)
     p.close()
 
 def test_plot_butterfly():

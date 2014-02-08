@@ -137,7 +137,7 @@ class corr:
 
         # subtract the mean from Y and X so that this can be omitted during
         # permutation
-        Y -= Y.summary('case')
+        Y -= Y.aggregate('case')
         X = X - X.mean()
 
         n = len(Y)
@@ -262,7 +262,7 @@ class ttest_1samp:
         pmap = _ttest_p(tmap, df, tail)
 
         test_name = '1-Sample t-Test'
-        y = ct.Y.summary()
+        y = ct.Y.aggregate()
         if popmean:
             diff = y - popmean
             if np.any(diff < 0):
@@ -382,8 +382,8 @@ class ttest_ind:
         info = _cs.set_info_cs(ct.Y.info, info)
         t = NDVar(tmap, dims, info=info, name='T')
 
-        c1_mean = ct.data[c1].summary(name=cellname(c1))
-        c0_mean = ct.data[c0].summary(name=cellname(c0))
+        c1_mean = ct.data[c1].aggregate(name=cellname(c1))
+        c0_mean = ct.data[c0].aggregate(name=cellname(c0))
         diff = c1_mean - c0_mean
         if np.any(diff < 0):
             diff.info['cmap'] = 'xpolar'
@@ -521,8 +521,8 @@ class ttest_rel:
         info = _cs.set_info_cs(ct.Y.info, info)
         t = NDVar(tmap, dims, info=info, name='T')
 
-        c1_mean = ct.data[c1].summary(name=cellname(c1))
-        c0_mean = ct.data[c0].summary(name=cellname(c0))
+        c1_mean = ct.data[c1].aggregate(name=cellname(c1))
+        c0_mean = ct.data[c0].aggregate(name=cellname(c0))
         diff = c1_mean - c0_mean
         if np.any(diff < 0):
             diff.info['cmap'] = 'xpolar'
