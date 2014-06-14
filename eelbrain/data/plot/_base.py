@@ -864,7 +864,7 @@ class _EelFigure(object):
         "(Re-)draw the figure (after making manual changes)."
         self._frame.canvas.draw()
 
-    def image(self, filename="image.svg"):
+    def image(self, filename="image.svg", bbox_inches='tight'):
         """Create FMTXT Image from the figure
 
         Parameters
@@ -873,6 +873,10 @@ class _EelFigure(object):
             Filename (for saving inside an HTML file) including extension.
             Extension determines the format (e.g. *.svg for vector and *.png
             for pixel graphics).
+        bbox_inches : None | 'tight'
+            Bbox in inches (matplotlib savefig() parameter). Only the given
+            portion of the figure is saved. If 'tight' (default), try to figure
+            out the tight bbox of the figure.
 
         Returns
         -------
@@ -880,7 +884,7 @@ class _EelFigure(object):
             Image FMTXT object.
         """
         image = Image(filename)
-        self.figure.savefig(image, format=image._ext)
+        self.figure.savefig(image, format=image._ext, bbox_inches=bbox_inches)
         return image
 
 
