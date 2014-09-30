@@ -2089,9 +2089,6 @@ class _ClusterDist:
                 err = ("The dist_dim and dist_tstep parameters only apply to "
                        "threshold-free cluster distributions.")
                 raise ValueError(err)
-            if parc and kind == 'tfce':
-                msg = "parc does not apply to TFCE"
-                raise NotImplementedError(msg)
 
             # check all dims are in order
             if dist_tstep and not Y.has_dim('time'):

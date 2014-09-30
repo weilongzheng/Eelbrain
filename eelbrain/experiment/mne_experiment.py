@@ -1719,9 +1719,7 @@ class MneExperiment(FileTree):
 
         # find cached file path
         if parc:
-            if pmin == 'tfce':
-                raise NotImplementedError("tfce analysis can't have parc")
-            elif data == 'sns':
+            if data == 'sns':
                 raise NotImplementedError("sns analysis can't have parc")
             mask = True
             parc_ = parc
