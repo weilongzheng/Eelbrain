@@ -3025,7 +3025,7 @@ class MneExperiment(FileTree):
         """just compute the test result"""
         # find cluster criteria
         kwargs = {'samples': samples, 'tstart': tstart, 'tstop': tstop,
-                  'dist_dim': dist_dim, 'parc':parc_dim}
+                  'dist_dim': dist_dim, 'parc': parc_dim}
         if pmin == 'tfce':
             kwargs['tfce'] = True
         elif pmin is not None:

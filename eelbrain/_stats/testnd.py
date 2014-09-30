@@ -2083,7 +2083,7 @@ class _ClusterDist:
 
         # prepare distribution
         N = int(N)
-        if (dist_dim or parc or dist_tstep):
+        if dist_dim or parc or dist_tstep:
             # raise for incompatible cases
             if (dist_dim or dist_tstep) and kind == 'cluster':
                 err = ("The dist_dim and dist_tstep parameters only apply to "
