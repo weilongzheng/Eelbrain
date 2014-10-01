@@ -1882,7 +1882,7 @@ def _clustering_worker(in_queue, out_queue, shape, threshold, tail, struct,
 
 
 def _tfce_worker(in_queue, out_queue, shape, tail, struct, all_adjacent,
-                 flat_shape, conn, stacked_shape, max_axes):
+                 flat_shape, conn, stacked_shape, max_axes, parc):
     os.nice(20)
 
     # allocate memory buffers
@@ -1890,6 +1890,8 @@ def _tfce_worker(in_queue, out_queue, shape, tail, struct, all_adjacent,
     tfce_map_stacked = tfce_map.reshape(stacked_shape)
     bin_buff = np.empty(shape, np.bool_)
     int_buff = np.empty(shape, np.uint32)
+    if parc is not None:
+        out = np.empty(len(parc))
 
     while True:
         pmap = in_queue.get()
@@ -1897,7 +1899,13 @@ def _tfce_worker(in_queue, out_queue, shape, tail, struct, all_adjacent,
             break
         _tfce(pmap, tfce_map, tail, bin_buff, int_buff, struct, all_adjacent,
               flat_shape, conn)
-        out = tfce_map_stacked.max(max_axes)
+
+        if parc is not None:
+            out.fill(0)
+            for i, idx in enumerate(parc):
+                out[i] = tfce_map_stacked[idx].max()
+        else:
+            out = tfce_map_stacked.max(max_axes)
         out_queue.put(out)
 
 
@@ -2285,7 +2293,7 @@ class _ClusterDist:
             max_axes = self._max_axes
             target = _tfce_worker
             args = (pmap_queue, dist_queue, shape, tail, struct, all_adjacent,
-                    flat_shape, conn, stacked_shape, max_axes)
+                    flat_shape, conn, stacked_shape, max_axes, parc)
 
         self._workers = []
         for _ in xrange(self._n_workers):
@@ -2632,6 +2640,11 @@ class _ClusterDist:
                       self._int_buff, self._struct, self._all_adjacent,
                       self._flat_shape, self._connectivity)
                 v = self._cmap_stacked.max(self._max_axes)
+                if self._parc is not None:
+                    v_ = np.empty(len(self._parc))
+                    for i, idx in enumerate(self._parc):
+                        v_[i] = v[idx].max()
+                    v = v_
             elif self.kind == 'cluster':
                 cmap = self._int_buff
                 cids = _label_clusters(pmap, cmap, self._bin_buff,
