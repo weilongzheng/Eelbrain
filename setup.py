@@ -33,7 +33,8 @@ else:
     arg = None
 
 # Cython extensions
-ext = [Extension("eelbrain._stats.opt", ["eelbrain/_stats/opt.c"])]
+ext = [Extension("eelbrain._stats.opt", ["eelbrain/_stats/opt.c"]),
+       Extension("eelbrain._data_opt", ["eelbrain/_data_opt.c"])]
 
 # basic setup arguments
 kwargs = dict(name='eelbrain',
