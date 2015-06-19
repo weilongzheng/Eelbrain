@@ -50,7 +50,8 @@ from scipy.spatial.distance import cdist, pdist, squareform
 
 from . import fmtxt
 from . import _colorspaces as cs
-from ._utils import ui, LazyProperty, natsorted  #, logger
+from ._data_opt import gaussian_smoother
+from ._utils import ui, LazyProperty, natsorted
 from ._utils.numpy_utils import slice_to_arange, full_slice
 
 
@@ -3837,6 +3838,24 @@ class NDVar(object):
         """
         from ._stats.stats import rms
         return self._aggregate_over_dims(axis, regions, rms)
+
+    def smooth(self, dim, fwhm):
+        """Smooth the ndvar over the given dimension
+
+        Parameters
+        ----------
+        dim : str
+            Name of the dimension over which to smooth.
+        fwhm : scalar
+            The full width at half maximum.
+        """
+        dim_ = self.get_dim(dim)
+        m = gaussian_smoother(dim_.distances(), fwhm)
+        ax = self.get_axis(dim)
+        x = np.tensordot(m, self.x, (1, ax))
+        if ax:
+            x = x.swapaxes(0, ax)
+        return NDVar(x, self.dims, self.info.copy(), None)
 
     def std(self, dims=(), **regions):
         """Compute the standard deviation over given dimensions
