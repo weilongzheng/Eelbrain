@@ -6435,6 +6435,9 @@ class Dimension(object):
         else:
             return arg.x
 
+    def distances(self):
+        raise NotImplementedError("Distances for %s dimension" % self.name)
+
     def intersect(self, dim, check_dims=True):
         """Create a Dimension that is the intersection with dim
 
@@ -7781,6 +7784,19 @@ class SourceSpace(Dimension):
             stc_vertices = self.vertno[1]
         idx = np.in1d(stc_vertices, label.vertices, True)
         return idx
+
+    def distances(self):
+        "Surface distances between source space vertices"
+        dist = -np.ones((self._n_vert, self._n_vert))
+        sss = self.get_source_space()
+        i0 = 0
+        for vertices, ss in izip(self.vertno, sss):
+            if ss['dist'] is None:
+                raise RuntimeError("Source-space does not contain distances")
+            i = i0 + len(vertices)
+            dist[i0:i, i0:i] = ss['dist'][vertices, vertices[:, None]].toarray()
+            i0 = i
+        return dist
 
     def get_source_space(self):
         "Read the corresponding MNE source space"
