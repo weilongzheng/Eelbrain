@@ -72,6 +72,7 @@ inv_re = re.compile("(free|fixed|loose\.\d+)-"  # orientation constraint
                     "(MNE|dSPM|sLORETA)"  # method
                     "(?:-(0?\.\d+))?"  # depth weighting
                     "(?:-(pick_normal|pick\+|pick-))?"  # pick component
+                    "(?:-sm(\d+))?"  # smoothing (in even mm)
                     "$")
 
 
@@ -1418,6 +1419,10 @@ class MneExperiment(FileTree):
                 else:
                     np.clip(src.x, -np.inf, 0, src.x)
 
+            if 'smooth' in self._params['post_inv_kw']:
+                smooth = self._params['post_inv_kw']['smooth']
+                src = src.smooth('source', smooth)
+
             if baseline:
                 src -= src.summary(time=baseline)
 
@@ -1482,8 +1487,8 @@ class MneExperiment(FileTree):
             err = ("Nothing to load, set at least one of (ind_stc, ind_ndvar, "
                    "morph_stc, morph_ndvar) to True")
             raise ValueError(err)
-        elif 'pick' in self._params['post_inv_kw']:
-            raise NotImplementedError("pick=%s in evoked" % repr(self._params['post_inv_kw']['pick']))
+        elif self._params['post_inv_kw']:
+            raise NotImplementedError("MNE SourceEstimate post-processing")
 
         if isinstance(baseline, str):
             raise NotImplementedError("Baseline form different epoch")
@@ -2409,8 +2414,8 @@ class MneExperiment(FileTree):
             Keep the source timecourse data in the Dataset that is returned
             (default False).
         """
-        if 'pick' in self._params['post_inv_kw']:
-            raise NotImplementedError("pick=%s in evoked" % repr(self._params['post_inv_kw']['pick']))
+        if self._params['post_inv_kw']:
+            raise NotImplementedError("MNE SourceEstimate post-processing")
 
         ds = self.load_evoked_stc(subject, sns_baseline, morph_ndvar=morph,
                                   ind_ndvar=not morph, mask=mask,
@@ -4714,7 +4719,8 @@ class MneExperiment(FileTree):
         if self.get('subject') not in group_members and group_members:
             self.set(group_members[0])
 
-    def set_inv(self, ori='free', snr=3, method='dSPM', depth=None, pick=None):
+    def set_inv(self, ori='free', snr=3, method='dSPM', depth=None, pick=None,
+                smooth=None):
         """Set the type of inverse solution used for source estimation
 
         Parameters
@@ -4732,6 +4738,9 @@ class MneExperiment(FileTree):
             Pick a specific component of the estimates (``'normal'``: the
             normal component of the estimated current vector; ``'+'`` or
             ``'-'``: only positice or negative estimates).
+        smooth : scalar
+            Full-width half maximum (in m, will be rounded to the next
+            millimeter).
         """
         if not isinstance(ori, basestring):
             ori = 'loose%s' % str(ori)[1:]
@@ -4748,6 +4757,9 @@ class MneExperiment(FileTree):
             else:
                 raise ValueError("pick=%s" % repr(pick))
 
+        if smooth:
+            items.append('sm%s' % int(round(smooth * 1e3)))
+
         inv = '-'.join(items)
         self.set(inv=inv)
 
@@ -4757,7 +4769,7 @@ class MneExperiment(FileTree):
         if m is None:
             raise ValueError("Invalid inverse specification: inv=%r" % inv)
 
-        ori, snr, method, depth, pick = m.groups()
+        ori, snr, method, depth, pick, smooth = m.groups()
         if ori.startswith('loose'):
             loose = float(ori[5:])
             if not 0 <= loose <= 1:
@@ -4777,7 +4789,7 @@ class MneExperiment(FileTree):
             return
 
         m = inv_re.match(inv)
-        ori, snr, method, depth, pick = m.groups()
+        ori, snr, method, depth, pick, smooth = m.groups()
 
         make_kw = {}
         apply_kw = {}
@@ -4796,11 +4808,15 @@ class MneExperiment(FileTree):
 
         apply_kw['method'] = method
         apply_kw['lambda2'] = 1. / float(snr) ** 2
+
         if pick:
             if pick == 'normal':
                 apply_kw['pick_normal'] = True
             elif pick in ('pick+', 'pick-'):
                 post_kw['pick'] = pick[-1]
+
+        if smooth:
+            post_kw['smooth'] = float(smooth) * 1e-3
 
         self._params['make_inv_kw'] = make_kw
         self._params['apply_inv_kw'] = apply_kw
