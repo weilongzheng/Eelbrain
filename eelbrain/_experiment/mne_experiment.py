@@ -71,8 +71,8 @@ inv_re = re.compile("(free|fixed|loose\.\d+)-"  # orientation constraint
                     "(\d*\.?\d+)-"  # SNR
                     "(MNE|dSPM|sLORETA)"  # method
                     "(?:-(0?\.\d+))?"  # depth weighting
-                    "(?:-(pick_normal))?"
-                    "$")  # pick normal
+                    "(?:-(pick_normal|pick\+|pick-))?"  # pick component
+                    "$")
 
 
 def _mask_ndvar(ds, name):
@@ -1411,6 +1411,13 @@ class MneExperiment(FileTree):
                                       self._params['apply_inv_kw']['method'],
                                       self._params['make_inv_kw'].get('fixed', False),
                                       parc=parc)
+
+            if 'pick' in self._params['post_inv_kw']:
+                if self._params['post_inv_kw']['pick'] == '+':
+                    np.clip(src.x, 0, np.inf, src.x)
+                else:
+                    np.clip(src.x, -np.inf, 0, src.x)
+
             if baseline:
                 src -= src.summary(time=baseline)
 
@@ -1430,6 +1437,8 @@ class MneExperiment(FileTree):
                 raise NotImplementedError("Baseline for SourceEstimate")
             if morph:
                 raise NotImplementedError("Morphing for SourceEstimate")
+            elif self._params['post_inv_kw']:
+                raise NotImplementedError("MNE SourceEstimate post-processing")
             ds['stc'] = stc
 
     def _add_evoked_stc(self, ds, ind_stc=False, ind_ndvar=False, morph_stc=False,
@@ -1473,6 +1482,8 @@ class MneExperiment(FileTree):
             err = ("Nothing to load, set at least one of (ind_stc, ind_ndvar, "
                    "morph_stc, morph_ndvar) to True")
             raise ValueError(err)
+        elif 'pick' in self._params['post_inv_kw']:
+            raise NotImplementedError("pick=%s in evoked" % repr(self._params['post_inv_kw']['pick']))
 
         if isinstance(baseline, str):
             raise NotImplementedError("Baseline form different epoch")
@@ -2398,6 +2409,9 @@ class MneExperiment(FileTree):
             Keep the source timecourse data in the Dataset that is returned
             (default False).
         """
+        if 'pick' in self._params['post_inv_kw']:
+            raise NotImplementedError("pick=%s in evoked" % repr(self._params['post_inv_kw']['pick']))
+
         ds = self.load_evoked_stc(subject, sns_baseline, morph_ndvar=morph,
                                   ind_ndvar=not morph, mask=mask,
                                   data_raw='clm', **kwargs)
@@ -4700,8 +4714,7 @@ class MneExperiment(FileTree):
         if self.get('subject') not in group_members and group_members:
             self.set(group_members[0])
 
-    def set_inv(self, ori='free', snr=3, method='dSPM', depth=None,
-                pick_normal=False):
+    def set_inv(self, ori='free', snr=3, method='dSPM', depth=None, pick=None):
         """Set the type of inverse solution used for source estimation
 
         Parameters
@@ -4715,9 +4728,10 @@ class MneExperiment(FileTree):
             Inverse method.
         depth : None | float
             Depth weighting (default None).
-        pick_normal : bool
-            Pick the normal component of the estimated current vector (default
-            False).
+        pick : 'normal' | '+' | '-'
+            Pick a specific component of the estimates (``'normal'``: the
+            normal component of the estimated current vector; ``'+'`` or
+            ``'-'``: only positice or negative estimates).
         """
         if not isinstance(ori, basestring):
             ori = 'loose%s' % str(ori)[1:]
@@ -4726,8 +4740,13 @@ class MneExperiment(FileTree):
         if depth:
             items.append(str(depth))
 
-        if pick_normal:
-            items.append('pick_normal')
+        if pick:
+            if pick == 'normal':
+                items.append('pick_normal')
+            elif pick in '+-':
+                items.append('pick%s' % pick)
+            else:
+                raise ValueError("pick=%s" % repr(pick))
 
         inv = '-'.join(items)
         self.set(inv=inv)
@@ -4738,13 +4757,15 @@ class MneExperiment(FileTree):
         if m is None:
             raise ValueError("Invalid inverse specification: inv=%r" % inv)
 
-        ori, snr, method, depth, pick_normal = m.groups()
+        ori, snr, method, depth, pick = m.groups()
         if ori.startswith('loose'):
             loose = float(ori[5:])
             if not 0 <= loose <= 1:
-                err = ('First value of inv (loose parameter) needs to be '
-                       'in [0, 1]')
-                raise ValueError(err)
+                raise ValueError('First value of inv (loose parameter) needs to be in [0, 1]')
+            elif pick in ('pick+', 'pick-'):
+                raise ValueError("ori='loose' and pick=%s" % repr(pick))
+        elif ori == 'free' and pick in ('pick+', 'pick-'):
+            raise ValueError("ori='free' and pick=%s" % repr(pick[-1]))
 
         return inv
 
@@ -4752,13 +4773,15 @@ class MneExperiment(FileTree):
         if '*' in inv:
             self._params['make_inv_kw'] = None
             self._params['apply_inv_kw'] = None
+            self._params['post_inv_kw'] = None
             return
 
         m = inv_re.match(inv)
-        ori, snr, method, depth, pick_normal = m.groups()
+        ori, snr, method, depth, pick = m.groups()
 
         make_kw = {}
         apply_kw = {}
+        post_kw = {}
 
         if ori == 'fixed':
             make_kw['fixed'] = True
@@ -4773,11 +4796,15 @@ class MneExperiment(FileTree):
 
         apply_kw['method'] = method
         apply_kw['lambda2'] = 1. / float(snr) ** 2
-        if pick_normal:
-            apply_kw['pick_normal'] = True
+        if pick:
+            if pick == 'normal':
+                apply_kw['pick_normal'] = True
+            elif pick in ('pick+', 'pick-'):
+                post_kw['pick'] = pick[-1]
 
         self._params['make_inv_kw'] = make_kw
         self._params['apply_inv_kw'] = apply_kw
+        self._params['post_inv_kw'] = post_kw
 
     def _eval_model(self, model):
         if model == '':
