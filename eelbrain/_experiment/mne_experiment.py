@@ -1483,12 +1483,15 @@ class MneExperiment(FileTree):
         Assumes that all Evoked of the same subject share the same inverse
         operator.
         """
+        post_inv_kw = self._params['post_inv_kw']
         if not any((ind_stc, ind_ndvar, morph_stc, morph_ndvar)):
-            err = ("Nothing to load, set at least one of (ind_stc, ind_ndvar, "
-                   "morph_stc, morph_ndvar) to True")
-            raise ValueError(err)
-        elif self._params['post_inv_kw']:
+            raise ValueError("Nothing to load, set at least one of (ind_stc, "
+                             "ind_ndvar, morph_stc, morph_ndvar) to True")
+        elif (ind_stc or morph_stc) and post_inv_kw:
             raise NotImplementedError("MNE SourceEstimate post-processing")
+        elif 'pick' in post_inv_kw:
+            raise NotImplementedError("Inverse solution with pick=%r for evoked"
+                                      % post_inv_kw['pick'])
 
         if isinstance(baseline, str):
             raise NotImplementedError("Baseline form different epoch")
@@ -1562,9 +1565,9 @@ class MneExperiment(FileTree):
         src = self.get('src')
         parc = self.get('parc') or None
         mri_sdir = self.get('mri-sdir')
-        # for name, key in izip(do, keys):
         if ind_stc:
             ds['stc'] = stcs
+
         if ind_ndvar:
             subject = from_subjects[meg_subjects[0]]
             ds['src'] = load.fiff.stc_ndvar(stcs, subject, src, mri_sdir,
@@ -1573,16 +1576,23 @@ class MneExperiment(FileTree):
                                             parc=parc)
             if mask:
                 _mask_ndvar(ds, 'src')
-        if morph_stc or morph_ndvar:
-            if morph_stc:
-                ds['stcm'] = mstcs
-            if morph_ndvar:
-                ds['srcm'] = load.fiff.stc_ndvar(mstcs, common_brain, src, mri_sdir,
-                                                 self._params['apply_inv_kw']['method'],
-                                                 self._params['make_inv_kw'].get('fixed', False),
-                                                 parc=parc)
-                if mask:
-                    _mask_ndvar(ds, 'srcm')
+
+            if 'smooth' in post_inv_kw:
+                ds['src'] = ds['src'].smooth('source', post_inv_kw['smooth'])
+
+        if morph_stc:
+            ds['stcm'] = mstcs
+
+        if morph_ndvar:
+            ds['srcm'] = load.fiff.stc_ndvar(mstcs, common_brain, src, mri_sdir,
+                                             self._params['apply_inv_kw']['method'],
+                                             self._params['make_inv_kw'].get('fixed', False),
+                                             parc=parc)
+            if mask:
+                _mask_ndvar(ds, 'srcm')
+
+            if 'smooth' in post_inv_kw:
+                ds['srcm'] = ds['srcm'].smooth('source', post_inv_kw['smooth'])
 
         if not keep_evoked:
             del ds['evoked']
