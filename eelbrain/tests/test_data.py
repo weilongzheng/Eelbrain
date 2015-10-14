@@ -689,6 +689,9 @@ def test_ndvar():
     x_tc = x.sub(sensor='1')
     x_time = NDVar(x_tc.time.times >= 0.3, dims=(x_tc.time,))
     assert_dataobj_equal(x_tc[x_time], x_tc.sub(time=(0.3, None)))
+    # NDVar whose dimension is smaller
+    x_time_sub = x_time.sub(time=(0.2, None))
+    assert_dataobj_equal(x_tc[x_time_sub], x_tc.sub(time=(0.3, None)))
 
     # out of range index
     assert_raises(ValueError, x.sub, time=(0.1, 0.81))
