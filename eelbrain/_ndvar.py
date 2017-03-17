@@ -354,7 +354,7 @@ class Filter(object):
         raise NotImplementedError
 
     def __eq__(self, other):
-        return self.sfreq == other.sfreq
+        return isinstance(other, self.__class__) and self.sfreq == other.sfreq
 
     def filter(self, ndvar):
         """Filter an NDVar"""
@@ -425,6 +425,28 @@ class Butterworth(Filter):
             return signal.butter(self.order, self.high / nyq, 'lowpass')
         else:
             raise ValueError("Neither low nor high set")
+
+
+class WindowFilter(Filter):
+    _a = np.array([1])
+
+    def __init__(self, length, window='blackman', sfreq=None):
+        self.length = length
+        self.window = window
+        Filter.__init__(self, sfreq)
+
+    def _repr_args(self):
+        return "%r, %r" % (self.length, self.window)
+
+    def __eq__(self, other):
+        return (Filter.__eq__(self, other) and self.length == other.length and
+                self.window == other.window)
+
+    def _get_b_a(self, tstep):
+        n = int(round(self.length / tstep))
+        window = signal.get_window(self.window, n)
+        window /= window.sum()
+        return window, self._a
 
 
 def segment(continuous, times, tstart, tstop, decim=1):

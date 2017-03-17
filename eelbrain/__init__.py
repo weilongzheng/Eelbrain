@@ -21,8 +21,9 @@ from ._data_obj import (Datalist, Dataset, Var, Factor, Interaction, Model,
                         shuffled_index)
 from ._experiment import MneExperiment
 from ._mne import labels_from_clusters, morph_source_space
-from ._ndvar import (Butterworth, concatenate, convolve, cwt_morlet, dss,
-                     filter_data, neighbor_correlation, resample, segment)
+from ._ndvar import (Butterworth, WindowFilter, concatenate, convolve,
+                     cwt_morlet, dss, filter_data, neighbor_correlation,
+                     resample, segment)
 from ._trf import boosting, BoostingResult
 from ._utils import set_log_level
 from ._utils.com import check_for_update
