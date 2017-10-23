@@ -90,7 +90,7 @@ COV_PARAMS = {'epoch', 'session', 'method', 'reg', 'keep_sample_mean',
 inv_re = re.compile("(free|fixed|loose\.\d+)-"  # orientation constraint
                     "(\d*\.?\d+)-"  # SNR
                     "(MNE|dSPM|sLORETA)"  # method
-                    "(?:-(0?\.\d+))?"  # depth weighting
+                    "(?:-((?:0\.)?\d+))?"  # depth weighting
                     "(?:-(pick_normal))?"
                     "$")  # pick normal
 
@@ -5696,39 +5696,82 @@ class MneExperiment(FileTree):
             SNR estimate for regularization (default 3).
         method : 'MNE' | 'dSPM' | 'sLORETA'
             Inverse method.
-        depth : None | float
-            Depth weighting (default None).
+        depth : None | float [0, 1]
+            Depth weighting (default 0.8; 0 to disable depth weighting).
         pick_normal : bool
             Pick the normal component of the estimated current vector (default
             False).
         """
-        if not isinstance(ori, basestring):
-            ori = 'loose%s' % str(ori)[1:]
-        items = [ori, str(snr), method]
+        self.set(inv=self._inv_str(ori, snr, method, depth, pick_normal))
 
-        if depth:
-            items.append(str(depth))
+    @staticmethod
+    def _inv_str(ori, snr, method, depth, pick_normal):
+        "Construct inv str from settings"
+        if isinstance(ori, basestring):
+            if ori not in ('free', 'fixed'):
+                raise ValueError('ori=%r' % (ori,))
+        elif not 0 <= ori <= 1:
+            raise ValueError("ori=%r; must be in range [0, 1]" % (ori,))
+        else:
+            ori = 'loose%s' % str(ori)[1:]
+
+        if snr <= 0:
+            raise ValueError("snr=%r" % (snr,))
+
+        if method not in ('MNE', 'dSPM', 'sLORETA'):
+            raise ValueError("method=%r" % (method,))
+
+        items = [ori, '%g' % snr, method]
+
+        if depth is None or depth == 0.8:
+            pass
+        elif depth < 0 or depth > 1:
+            raise ValueError("depth=%r; must be in range [0, 1]" % (depth,))
+        else:
+            items.append('%g' % depth)
 
         if pick_normal:
             items.append('pick_normal')
 
-        inv = '-'.join(items)
-        self.set(inv=inv)
+        return '-'.join(items)
 
     @staticmethod
-    def _eval_inv(inv):
+    def _inv_params(inv):
+        "(ori, snr, method, depth, pick_normal)"
         m = inv_re.match(inv)
         if m is None:
             raise ValueError("Invalid inverse specification: inv=%r" % inv)
 
         ori, snr, method, depth, pick_normal = m.groups()
         if ori.startswith('loose'):
-            loose = float(ori[5:])
-            if not 0 <= loose <= 1:
-                err = ('First value of inv (loose parameter) needs to be '
-                       'in [0, 1]')
-                raise ValueError(err)
+            ori = float(ori[5:])
+            if not 0 <= ori <= 1:
+                raise ValueError('inv=%r (first value of inv (loose parameter) needs '
+                                 'to be in [0, 1]')
+        elif ori not in ('free', 'fixed'):
+            raise ValueError('inv=%r (ori=%r)' % (inv, ori))
 
+        snr = float(snr)
+        if snr <= 0:
+            raise ValueError('inv=%r (snr=%r)' % (inv, snr))
+
+        if method not in ('MNE', 'dSPM', 'sLORETA'):
+            raise ValueError("inv=%r (method=%r)" % (inv, method))
+
+        if depth is not None:
+            depth = float(depth)
+            if not 0 <= depth <= 1:
+                raise ValueError("inv=%r (depth=%r, needs to be in range "
+                                 "[0, 1])" % (inv, depth))
+            elif depth == 0.8:
+                raise ValueError("inv=%r (depth=0.8 is the default, use "
+                                 "depth=None instead)" % (inv,))
+
+        return ori, snr, method, depth, bool(pick_normal)
+
+    @classmethod
+    def _eval_inv(cls, inv):
+        cls._inv_params(inv)
         return inv
 
     def _post_set_inv(self, _, inv):
@@ -5737,24 +5780,27 @@ class MneExperiment(FileTree):
             self._params['apply_inv_kw'] = None
             return
 
-        m = inv_re.match(inv)
-        ori, snr, method, depth, pick_normal = m.groups()
+        ori, snr, method, depth, pick_normal = self._inv_params(inv)
 
         if ori == 'fixed':
             make_kw = {'fixed': True, 'loose': None}
         elif ori == 'free':
             make_kw = {'loose': 1}
-        elif ori.startswith('loose'):
-            make_kw = {'loose': float(ori[5:])}
+        elif isinstance(ori, float):
+            make_kw = {'loose': ori}
         else:
             raise RuntimeError("ori=%r (in inv=%r)" % (ori, inv))
 
-        if depth is not None:
-            make_kw['depth'] = float(depth)
+        if depth is None:
+            make_kw['depth'] = 0.8
+        elif depth == 0:
+            make_kw['depth'] = None
+        else:
+            make_kw['depth'] = depth
 
-        apply_kw = {'method': method, 'lambda2': 1. / float(snr) ** 2}
+        apply_kw = {'method': method, 'lambda2': 1. / snr ** 2}
         if pick_normal:
-            apply_kw['pick_normal'] = True
+            apply_kw['pick_normal'] = pick_normal
 
         self._params['make_inv_kw'] = make_kw
         self._params['apply_inv_kw'] = apply_kw

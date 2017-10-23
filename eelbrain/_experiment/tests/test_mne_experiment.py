@@ -95,27 +95,49 @@ def test_mne_experiment_templates():
          'equalize_evoked_count', 'model', })
 
     # inv
+    SNR1 = 1.
     SNR2 = 1. / 2**2
     SNR3 = 1. / 3**2
-    e.set_inv('free', 3, 'dSPM', .8, True)
-    eq_(e.get('inv'), 'free-3-dSPM-0.8-pick_normal')
-    eq_(e._params['make_inv_kw'], {'loose': 1, 'depth': 0.8})
-    eq_(e._params['apply_inv_kw'], {'method': 'dSPM', 'lambda2': SNR3,
-                                    'pick_normal': True})
-    e.set_inv('fixed', 2, 'MNE', .8)
-    eq_(e.get('inv'), 'fixed-2-MNE-0.8')
-    eq_(e._params['make_inv_kw'], {'fixed': True, 'loose': None, 'depth': 0.8})
-    eq_(e._params['apply_inv_kw'], {'method': 'MNE', 'lambda2': SNR2})
 
-    e.set_inv('fixed', 2, 'MNE', pick_normal=True)
-    eq_(e.get('inv'), 'fixed-2-MNE-pick_normal')
-    eq_(e._params['make_inv_kw'], {'fixed': True, 'loose': None})
-    eq_(e._params['apply_inv_kw'], {'method': 'MNE', 'lambda2': SNR2,
-                                    'pick_normal': True})
-    e.set_inv(0.5, 3, 'sLORETA')
-    eq_(e.get('inv'), 'loose.5-3-sLORETA')
-    eq_(e._params['make_inv_kw'], {'loose': 0.5})
-    eq_(e._params['apply_inv_kw'], {'method': 'sLORETA', 'lambda2': SNR3})
+    def set_inv(inv, make_kw, apply_kw, *args):
+        e.reset()
+        e.set(inv=inv)
+        eq_(e._params['make_inv_kw'], make_kw)
+        eq_(e._params['apply_inv_kw'], apply_kw)
+        e.reset()
+        e.set_inv(*args)
+        eq_(e.get('inv'), inv)
+        eq_(e._params['make_inv_kw'], make_kw)
+        eq_(e._params['apply_inv_kw'], apply_kw)
+
+    yield (set_inv, 'free-3-MNE',
+           {'loose': 1, 'depth': 0.8},
+           {'method': 'MNE', 'lambda2': SNR3},
+           'free', 3, 'MNE', .8)
+    yield (set_inv, 'free-3-dSPM-0.2-pick_normal',
+           {'loose': 1, 'depth': 0.2},
+           {'method': 'dSPM', 'lambda2': SNR3, 'pick_normal': True},
+           'free', 3, 'dSPM', .2, True)
+    yield (set_inv, 'fixed-2-MNE-0.2',
+           {'fixed': True, 'loose': None, 'depth': 0.2},
+           {'method': 'MNE', 'lambda2': SNR2},
+           'fixed', 2, 'MNE', .2)
+    yield (set_inv, 'fixed-2-MNE-pick_normal',
+           {'fixed': True, 'loose': None, 'depth': 0.8},
+           {'method': 'MNE', 'lambda2': SNR2, 'pick_normal': True},
+           'fixed', 2, 'MNE', None, True)
+    yield (set_inv, 'loose.5-3-sLORETA',
+           {'loose': 0.5, 'depth': 0.8},
+           {'method': 'sLORETA', 'lambda2': SNR3},
+           0.5, 3, 'sLORETA')
+    yield (set_inv, 'fixed-1-MNE-0',
+           {'fixed': True, 'loose': None, 'depth': None},
+           {'method': 'MNE', 'lambda2': SNR1},
+           'fixed', 1, 'MNE', 0)
+
+    assert_raises(ValueError, e.set_inv, 'free', -3, 'dSPM')
+    assert_raises(ValueError, e.set, inv='free-3-mne')
+    assert_raises(ValueError, e.set, inv='free-3-MNE-2')
 
 
 def test_test_experiment():
