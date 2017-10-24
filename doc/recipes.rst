@@ -122,6 +122,7 @@ globally in order to ensure that they are consistent between plots, e.g.::
     for key in mpl.rcParams:
         if 'width' in key:
             mpl.rcParams[key] *= 0.5
+    mpl.rcParams['savefig.dpi'] = 300  # different from 'figure.dpi'!
 
 
 Matplotlib's :func:`~matplotlib.pyplot.tight_layout` functionality provides an
