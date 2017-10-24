@@ -623,7 +623,7 @@ class MneExperiment(FileTree):
                         raise DefinitionError(
                             "Group %s contains non-existing subjects: %s" %
                             (name, ', '.join(missing)))
-                    group_members = tuple(group_def)
+                    group_members = sorted(group_def)
                     if len(set(group_members)) < len(group_members):
                         count = Counter(group_members)
                         duplicates = (s for s, n in count.iteritems() if n > 1)
@@ -1173,7 +1173,7 @@ class MneExperiment(FileTree):
                 if group not in self._groups:
                     invalid_cache['groups'].add(group)
                     log.warn("  Group removed: %s", group)
-                elif members != self._groups[group]:
+                elif set(members) != set(self._groups[group]):
                     invalid_cache['groups'].add(group)
                     log_list_change(log, "Group", group, members, self._groups[group])
 

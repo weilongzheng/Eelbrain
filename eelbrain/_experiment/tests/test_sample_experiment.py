@@ -54,10 +54,21 @@ def test_sample():
     ds['n'] = Var(range(3))
     s_table = e._report_subject_info(ds, '')
 
-    # test bad definitions
+    # duplicate subject
     class BadExperiment(e_module.SampleExperiment):
         groups = {'group': ('R0001', 'R0002', 'R0002')}
     assert_raises(DefinitionError, BadExperiment, root)
+
+    # non-existing subject
+    class BadExperiment(e_module.SampleExperiment):
+        groups = {'group': ('R0001', 'R0003', 'R0002')}
+    assert_raises(DefinitionError, BadExperiment, root)
+
+    # unsorted subjects
+    class Experiment(e_module.SampleExperiment):
+        groups = {'group': ('R0002', 'R0000', 'R0001')}
+    e = Experiment(root)
+    eq_([s for s in e], ['R0000', 'R0001', 'R0002'])
 
 
 @requires_mne_sample_data
