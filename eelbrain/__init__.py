@@ -19,7 +19,7 @@ from ._config import configure
 from ._celltable import Celltable
 from ._data_obj import (
     Datalist, Dataset, Var, Factor, Interaction, Model,
-    NDVar, Case, Categorial, Scalar, Sensor, SourceSpace, UTS,
+    NDVar, Case, Categorial, Scalar, Sensor, SourceSpace, UTS, Space,
     choose, combine, align, align1, cellname, shuffled_index
 )
 from ._experiment import MneExperiment

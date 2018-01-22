@@ -7241,6 +7241,77 @@ class Case(Dimension):
         return arg
 
 
+class Space(Dimension):
+
+    _DIRECTIONS = {
+        'A': 'anterior',
+        'P': 'posterior',
+        'L': 'left',
+        'R': 'right',
+        'S': 'superior',
+        'I': 'inferior',
+    }
+
+    def __init__(self, directions, name='space'):
+        if not isinstance(directions, str):
+            raise TypeError("directions=%r" % (directions,))
+        n = len(directions)
+        all_directions = set(directions)
+        if len(all_directions) != n:
+            raise ValueError("directions=%r contains duplicate direction"
+                             % (directions,))
+        invalid = all_directions.difference(self._DIRECTIONS)
+        if invalid:
+            raise ValueError("directions=%r contains invalid directions: %s"
+                             % (directions, ', '.join(map(repr, invalid))))
+        Dimension.__init__(self, name, 'none')
+        self._directions = directions
+
+    def __getstate__(self):
+        out = Dimension.__getstate__(self)
+        out['directions'] = self._directions
+        return out
+
+    def __setstate__(self, state):
+        Dimension.__setstate__(self, state)
+        self._directions = state['directions']
+
+    def __repr__(self):
+        return "Space(%r)" % self._directions
+
+    def __len__(self):
+        return len(self._directions)
+
+    def __eq__(self, other):
+        return isinstance(other, Space) and other._directions == self._directions
+
+    def __getitem__(self, item):
+        if not all(i in self._directions for i in item):
+            raise IndexError(item)
+        return Space(item)
+
+    def __iter__(self):
+        return iter(self._directions)
+
+    def _axis_format(self, scalar, label):
+        # like Categorial
+        return (IndexFormatter(self._directions),
+                FixedLocator(np.arange(len(self._directions))),
+                self._axis_label(label))
+
+    def _array_index(self, arg):
+        if isinstance(arg, basestring) and len(arg) == 1:
+            return self._directions.index(arg)
+        else:
+            return [self._directions.index(s) for s in arg]
+
+    def _dim_index(self, arg):
+        if isinstance(arg, Integral):
+            return self._directions[arg]
+        else:
+            return ''.join(self._directions[i] for i in arg)
+
+
 class Categorial(Dimension):
     """Simple categorial dimension
 
