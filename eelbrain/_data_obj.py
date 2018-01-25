@@ -8382,7 +8382,7 @@ def _mne_tri_soure_space_graph(source_space, vertices_list):
     return np.vstack(graphs)
 
 
-class SourceSpace(Dimension):
+class SourceSpaceBase(Dimension):
     """MNE source space dimension.
 
     Parameters
@@ -8419,6 +8419,7 @@ class SourceSpace(Dimension):
      - 'lh' or 'rh' to select an entire hemisphere
 
     """
+    kind = 'ico'
     _default_connectivity = 'custom'
     _SRC_PATH = os.path.join(
         '{subjects_dir}', '{subject}', 'bem', '{subject}-{src}-src.fif')
@@ -8445,60 +8446,23 @@ class SourceSpace(Dimension):
                                  "with %i vertices" % (len(parc), self._n_vert))
             self.parc = parc
         elif isinstance(parc, basestring):
-            if self.kind == 'ico':
-                fname = self._ANNOT_PATH.format(
-                    subjects_dir=self.subjects_dir, subject=self.subject,
-                    hemi='%s', parc=parc)
-                labels_lh, _, names_lh = read_annot(fname % 'lh')
-                labels_rh, _, names_rh = read_annot(fname % 'rh')
-                x_lh = labels_lh[self.lh_vertices]
-                x_lh[x_lh == -1] = -2
-                x_rh = labels_rh[self.rh_vertices]
-                x_rh[x_rh >= 0] += len(names_lh)
-                names = chain(('unknown-lh', 'unknown-rh'),
-                              (name + '-lh' for name in names_lh),
-                              (name + '-rh' for name in names_rh))
-                self.parc = Factor(np.hstack((x_lh, x_rh)), parc,
-                                   labels={i: name for i, name in
-                                           enumerate(names, -2)})
-            else:
-                raise NotImplementedError(
-                    "Can't set parcellation from annotation files for volume "
-                    "source space. Consider using a Factor instead.")
+            self.parc = self._read_parc(parc)
         else:
-            raise TypeError("Parc needs to be Factor or string, got %s" % repr(parc))
+            raise TypeError("Parc needs to be Factor or string, got %r" % (parc,))
+
+    def _read_parc(self, parc):
+        raise NotImplementedError(
+            "Can't set parcellation from annotation files for %s. Consider "
+            "using a Factor instead." % self.__class__.__name__)
 
     def _init_secondary(self):
         self._n_vert = sum(len(v) for v in self.vertices)
-        match = re.match("(ico|vol)-(\d)", self.src)
+        match = re.match("%s-(\d+)$" % self.kind, self.src)
         # The source-space type is needed to determine connectivity
         if match is None:
-            raise ValueError("src=%r; needs to be 'ico-i' or 'vol-i'" % self.src)
-        kind, grade = match.groups()
-        self.kind = kind
-        self.grade = int(grade)
-        if kind == 'ico':
-            assert len(self.vertices) == 2, "ico-based SourceSpaces need " \
-                                            "exactly two vertices arrays"
-            self.lh_vertices = self.vertices[0]
-            self.rh_vertices = self.vertices[1]
-            self.lh_n = len(self.lh_vertices)
-            self.rh_n = len(self.rh_vertices)
-        elif kind == 'vol':
-            assert len(self.vertices) == 1, "volume-based SourceSpaces need " \
-                                            "exactly one vertices array"
-
-    @deprecated_attribute('0.27', 'SourceSpace', 'vertices')
-    def vertno(self):
-        pass
-
-    @deprecated_attribute('0.27', 'SourceSpace', 'lh_vertices')
-    def lh_vertno(self):
-        pass
-
-    @deprecated_attribute('0.27', 'SourceSpace', 'rh_vertices')
-    def rh_vertno(self):
-        pass
+            raise ValueError("src=%r; needs to be '%s-i' where i is an integer"
+                             % (self.src, self.kind))
+        self.grade = int(match.group(1))
 
     @classmethod
     def from_file(cls, subjects_dir, subject, src, parc='aparc'):
@@ -8547,7 +8511,7 @@ class SourceSpace(Dimension):
         self._init_secondary()
 
     def __repr__(self):
-        out = "<SourceSpace"
+        out = "<" + self.__class__.__name__
         if self.name != 'source':
             out += ' ' + self.name
         vert_repr = ', '.join(str(len(v)) for v in self.vertices)
@@ -8557,13 +8521,6 @@ class SourceSpace(Dimension):
         if self.parc is not None:
             out += ', parc=%s' % self.parc.name
         return out + '>'
-
-    def __iter__(self):
-        if self.kind == 'ico':
-            return (temp % v for temp, vertices in
-                    izip(('L%i', 'R%i'), self.vertices) for v in vertices)
-        else:
-            return iter(self.vertices[0])
 
     def __len__(self):
         return self._n_vert
@@ -8575,39 +8532,7 @@ class SourceSpace(Dimension):
                     izip(self.vertices, other.vertices)))
 
     def __getitem__(self, index):
-        if isinstance(index, Integral):
-            if self.kind == 'vol':
-                return self.vertices[0][index]
-            elif index < self.lh_n:
-                return 'L%i' % self.lh_vertices[index]
-            elif index < self._n_vert:
-                return 'R%i' % self.rh_vertices[index - self.lh_n]
-            else:
-                raise ValueError("SourceSpace Index out of range: %i" % index)
-        int_index = index_to_int_array(index, self._n_vert)
-        bool_index = np.bincount(int_index, minlength=self._n_vert).astype(bool)
-
-        # vertices
-        boundaries = np.cumsum(tuple(chain((0,), (len(v) for v in self.vertices))))
-        vertices = [v[bool_index[boundaries[i]:boundaries[i + 1]]]
-                  for i, v in enumerate(self.vertices)]
-
-        # parc
-        if self.parc is None:
-            parc = None
-        else:
-            parc = self.parc[index]
-
-        dim = SourceSpace(vertices, self.subject, self.src, self.subjects_dir,
-                          parc, self._subgraph(int_index), self.name)
-        return dim
-
-    def _as_uv(self):
-        if self.kind == 'vol':
-            return Dimension._as_uv(self)
-        return Factor(('%s%i' % (hemi, i) for hemi, vertices in
-                       izip(('L', 'R'), self.vertices) for i in vertices),
-                      name=self.name)
+        raise NotImplementedError
 
     def _axis_format(self, scalar, label):
         return (FormatStrFormatter('%i'),
@@ -8645,22 +8570,6 @@ class SourceSpace(Dimension):
         # n sources
         ds['n_sources'] = Var(x.sum(1))
 
-        if self.kind == 'vol':
-            return ds
-
-        # hemi
-        hemis = []
-        for x_ in x:
-            where = np.flatnonzero(x_)
-            src_in_lh = (where < self.lh_n)
-            if np.all(src_in_lh):
-                hemis.append('lh')
-            elif np.any(src_in_lh):
-                hemis.append('bh')
-            else:
-                hemis.append('rh')
-        ds['hemi'] = Factor(hemis)
-
         # location
         if self.parc is not None:
             locations = []
@@ -8686,37 +8595,6 @@ class SourceSpace(Dimension):
             i0 = i
         return dist
 
-    def _link_midline(self, maxdist=0.015):
-        """Link sources in the left and right hemispheres
-
-        Link each source to the nearest source in the opposing hemisphere if
-        that source is closer than ``maxdist``.
-
-        Parameters
-        ----------
-        maxdist : scalar [m]
-            Add an interhemispheric connection between any two vertices whose
-            distance is less than this number (in meters; default 0.015).
-        """
-        if self.kind != 'ico':
-            raise ValueError("Can only link hemispheres in 'ico' source "
-                             "spaces, not in %s" % repr(self.kind))
-        old_con = self.connectivity()
-
-        # find vertices to connect
-        coords_lh = self.coordinates[:self.lh_n]
-        coords_rh = self.coordinates[self.lh_n:]
-        dists = cdist(coords_lh, coords_rh)
-        close_lh, close_rh = np.nonzero(dists < maxdist)
-        unique_close_lh = np.unique(close_lh)
-        unique_close_rh = np.unique(close_rh)
-        new_con = {(lh, np.argmin(dists[lh]) + self.lh_n) for lh in
-                   unique_close_lh}
-        new_con.update((np.argmin(dists[:, rh]), rh + self.lh_n) for rh in
-                       unique_close_rh)
-        new_con = np.array(sorted(new_con), np.uint32)
-        self._connectivity = np.vstack((old_con, new_con))
-
     def connectivity(self, disconnect_parc=False):
         """Create source space connectivity
 
@@ -8739,20 +8617,8 @@ class SourceSpace(Dimension):
                     "connectivity information it needs to be initialized with "
                     "src, subject and subjects_dir parameters")
 
-            src = self.get_source_space()
-            if self.kind == 'vol':
-                coords = src[0]['rr'][self.vertices[0]]
-                dist_threshold = self.grade * 0.0011
-                connectivity = _point_graph(coords, dist_threshold)
-            elif self.kind == 'ico':
-                connectivity = _mne_tri_soure_space_graph(src, self.vertices)
-            else:
-                msg = "Connectivity for %r source space" % self.kind
-                raise NotImplementedError(msg)
-
-            if connectivity.max() >= len(self):
-                raise RuntimeError("SourceSpace connectivity failed")
-            self._connectivity = connectivity
+            self._connectivity = connectivity = self._compute_connectivity()
+            assert connectivity.max() < len(self)
         else:
             connectivity = self._connectivity
 
@@ -8765,6 +8631,9 @@ class SourceSpace(Dimension):
             connectivity = connectivity[idx]
 
         return connectivity
+
+    def _compute_connectivity(self):
+        raise NotImplementedError("Connectivity for %r source space" % self.kind)
 
     def circular_index(self, seeds, extent=0.05, name="globe"):
         """Return an index into all vertices closer than ``extent`` of a seed
@@ -8804,34 +8673,7 @@ class SourceSpace(Dimension):
         return np.vstack(normals)
 
     def _array_index(self, arg):
-        if isinstance(arg, MNE_LABEL):
-            return self._array_index_label(arg)
-        elif isinstance(arg, basestring):
-            if arg == 'lh':
-                return slice(self.lh_n)
-            elif arg == 'rh':
-                if self.rh_n:
-                    return slice(self.lh_n, None)
-                else:
-                    return slice(0, 0)
-            else:
-                m = self._vertex_re.match(arg)
-                if m is None:
-                    return self._array_index_label(arg)
-                else:
-                    hemi, vertex = m.groups()
-                    vertex = int(vertex)
-                    vertices = self.vertices[hemi == 'R']
-                    i = int(np.searchsorted(vertices, vertex))
-                    if vertices[i] == vertex:
-                        if hemi == 'R':
-                            return i + self.lh_n
-                        else:
-                            return i
-                    else:
-                        raise IndexError("SourceSpace does not contain vertex "
-                                         "%r" % (arg,))
-        elif isinstance(arg, SourceSpace):
+        if isinstance(arg, SourceSpace):
             sv = self.vertices
             ov = arg.vertices
             if all(np.array_equal(s, o) for s, o in izip(sv, ov)):
@@ -8850,16 +8692,15 @@ class SourceSpace(Dimension):
             else:
                 return [self._array_index(a) for a in arg]
         else:
-            return super(SourceSpace, self)._array_index(arg)
+            return Dimension._array_index(self, arg)
 
     def _array_index_label(self, label):
         if isinstance(label, basestring):
             if self.parc is None:
                 raise RuntimeError("SourceSpace has no parcellation")
             elif label not in self.parc:
-                err = ("SourceSpace parcellation has no label called %r"
-                       % label)
-                raise KeyError(err)
+                raise KeyError("SourceSpace parcellation has no label called "
+                               "%r" % label)
             idx = self.parc == label
         elif label.hemi == 'both':
             lh_idx = self._array_index_hemilabel(label.lh)
@@ -8879,21 +8720,9 @@ class SourceSpace(Dimension):
         return idx
 
     def _array_index_hemilabel(self, label):
-        if label.hemi == 'lh':
-            stc_vertices = self.vertices[0]
-        else:
-            stc_vertices = self.vertices[1]
+        stc_vertices = self.vertices[label.hemi == 'rh']
         idx = np.in1d(stc_vertices, label.vertices, True)
         return idx
-
-    def _dim_index(self, index):
-        if np.isscalar(index):
-            if index >= self.lh_n:
-                return 'R%i' % (self.rh_vertices[index - self.lh_n])
-            else:
-                return 'L%i' % (self.lh_vertices[index])
-        else:
-            return Dimension._dim_index(self, index)
 
     def get_source_space(self, subjects_dir=None):
         "Read the corresponding MNE source space"
@@ -8903,8 +8732,7 @@ class SourceSpace(Dimension):
         path = self._SRC_PATH.format(
             subjects_dir=subjects_dir or self.subjects_dir,
             subject=self.subject, src=self.src)
-        src = mne.read_source_spaces(path)
-        return src
+        return mne.read_source_spaces(path)
 
     def index_for_label(self, label):
         """Return the index for a label
@@ -8962,6 +8790,165 @@ class SourceSpace(Dimension):
                           in izip(self.vertices, other.vertices))
         return self[index]
 
+    def set_parc(self, parc):
+        """Superseded. Use :func:`eelbrain.set_parc`."""
+        raise RuntimeError("The SourceSpace.set_parc() method has been "
+                           "removed. Use eelbrain.set_parc() instead")
+
+    @property
+    def values(self):
+        raise NotImplementedError
+
+
+class SourceSpace(SourceSpaceBase):
+    kind = 'ico'
+
+    def _init_secondary(self):
+        SourceSpaceBase._init_secondary(self)
+        assert len(self.vertices) == 2, "ico-based SourceSpaces need " \
+                                        "exactly two vertices arrays"
+        self.lh_vertices = self.vertices[0]
+        self.rh_vertices = self.vertices[1]
+        self.lh_n = len(self.lh_vertices)
+        self.rh_n = len(self.rh_vertices)
+
+    def _read_parc(self, parc):
+        fname = self._ANNOT_PATH.format(
+            subjects_dir=self.subjects_dir, subject=self.subject,
+            hemi='%s', parc=parc)
+        labels_lh, _, names_lh = read_annot(fname % 'lh')
+        labels_rh, _, names_rh = read_annot(fname % 'rh')
+        x_lh = labels_lh[self.lh_vertices]
+        x_lh[x_lh == -1] = -2
+        x_rh = labels_rh[self.rh_vertices]
+        x_rh[x_rh >= 0] += len(names_lh)
+        names = chain(('unknown-lh', 'unknown-rh'),
+                      (name + '-lh' for name in names_lh),
+                      (name + '-rh' for name in names_rh))
+        return Factor(np.hstack((x_lh, x_rh)), parc,
+                      labels={i: name for i, name in enumerate(names, -2)})
+
+    def __iter__(self):
+        return (temp % v for temp, vertices in
+                izip(('L%i', 'R%i'), self.vertices) for v in vertices)
+
+    def __getitem__(self, index):
+        if isinstance(index, Integral):
+            if index < self.lh_n:
+                return 'L%i' % self.lh_vertices[index]
+            elif index < self._n_vert:
+                return 'R%i' % self.rh_vertices[index - self.lh_n]
+            else:
+                raise IndexError("SourceSpace Index out of range: %i" % index)
+
+        int_index = index_to_int_array(index, self._n_vert)
+        bool_index = np.bincount(int_index, minlength=self._n_vert).astype(bool)
+
+        # vertices
+        boundaries = np.cumsum(tuple(chain((0,), (len(v) for v in self.vertices))))
+        vertices = [v[bool_index[boundaries[i]:boundaries[i + 1]]]
+                    for i, v in enumerate(self.vertices)]
+
+        # parc
+        parc = None if self.parc is None else self.parc[index]
+
+        return SourceSpace(vertices, self.subject, self.src, self.subjects_dir,
+                           parc, self._subgraph(int_index), self.name)
+
+    def _as_uv(self):
+        return Factor(('%s%i' % (hemi, i) for hemi, vertices in
+                       izip(('L', 'R'), self.vertices) for i in vertices),
+                      name=self.name)
+
+    def _cluster_properties(self, x):
+        ds = SourceSpaceBase._cluster_properties(self, x)
+        # hemi
+        hemis = []
+        for x_ in x:
+            where = np.flatnonzero(x_)
+            src_in_lh = (where < self.lh_n)
+            if np.all(src_in_lh):
+                hemis.append('lh')
+            elif np.any(src_in_lh):
+                hemis.append('bh')
+            else:
+                hemis.append('rh')
+        ds['hemi'] = Factor(hemis)
+
+    def _link_midline(self, maxdist=0.015):
+        """Link sources in the left and right hemispheres
+
+        Link each source to the nearest source in the opposing hemisphere if
+        that source is closer than ``maxdist``.
+
+        Parameters
+        ----------
+        maxdist : scalar [m]
+            Add an interhemispheric connection between any two vertices whose
+            distance is less than this number (in meters; default 0.015).
+        """
+        if self.kind != 'ico':
+            raise ValueError("Can only link hemispheres in 'ico' source "
+                             "spaces, not in %s" % repr(self.kind))
+        old_con = self.connectivity()
+
+        # find vertices to connect
+        coords_lh = self.coordinates[:self.lh_n]
+        coords_rh = self.coordinates[self.lh_n:]
+        dists = cdist(coords_lh, coords_rh)
+        close_lh, close_rh = np.nonzero(dists < maxdist)
+        unique_close_lh = np.unique(close_lh)
+        unique_close_rh = np.unique(close_rh)
+        new_con = {(lh, np.argmin(dists[lh]) + self.lh_n) for lh in
+                   unique_close_lh}
+        new_con.update((np.argmin(dists[:, rh]), rh + self.lh_n) for rh in
+                       unique_close_rh)
+        new_con = np.array(sorted(new_con), np.uint32)
+        self._connectivity = np.vstack((old_con, new_con))
+
+    def _compute_connectivity(self):
+        src = self.get_source_space()
+        return _mne_tri_soure_space_graph(src, self.vertices)
+
+    def _array_index(self, arg):
+        if isinstance(arg, MNE_LABEL):
+            return self._array_index_label(arg)
+        elif isinstance(arg, basestring):
+            if arg == 'lh':
+                return slice(self.lh_n)
+            elif arg == 'rh':
+                if self.rh_n:
+                    return slice(self.lh_n, None)
+                else:
+                    return slice(0, 0)
+            else:
+                m = self._vertex_re.match(arg)
+                if m is None:
+                    return self._array_index_label(arg)
+                else:
+                    hemi, vertex = m.groups()
+                    vertex = int(vertex)
+                    vertices = self.vertices[hemi == 'R']
+                    i = int(np.searchsorted(vertices, vertex))
+                    if vertices[i] == vertex:
+                        if hemi == 'R':
+                            return i + self.lh_n
+                        else:
+                            return i
+                    else:
+                        raise IndexError("SourceSpace does not contain vertex "
+                                         "%r" % (arg,))
+        return SourceSpaceBase._array_index(self, arg)
+
+    def _dim_index(self, index):
+        if np.isscalar(index):
+            if index >= self.lh_n:
+                return 'R%i' % (self.rh_vertices[index - self.lh_n])
+            else:
+                return 'L%i' % (self.lh_vertices[index])
+        else:
+            return SourceSpaceBase._dim_index(self, index)
+
     def _label(self, vertices, name, color, subjects_dir=None, sss=None):
         lh_vertices, rh_vertices = vertices
         if sss is None:
@@ -9006,14 +8993,52 @@ class SourceSpace(Dimension):
                              self.parc.name, name=self.name)
         return NDVar(np.concatenate(data), (source,))
 
-    def set_parc(self, parc):
-        """Superseded. Use :func:`eelbrain.set_parc`."""
-        raise RuntimeError("The SourceSpace.set_parc() method has been "
-                           "removed. Use eelbrain.set_parc() instead")
 
-    @property
-    def values(self):
-        raise NotImplementedError
+class VolumeSourceSpace(SourceSpaceBase):
+    kind = 'vol'
+
+    def _init_secondary(self):
+        SourceSpaceBase._init_secondary(self)
+        if len(self.vertices) != 1:
+            raise ValueError("A VolumeSourceSpace needs exactly one vertices "
+                             "array")
+
+    def __iter__(self):
+        return iter(self.vertices[0])
+
+    def __getitem__(self, index):
+        if isinstance(index, Integral):
+            try:
+                return str(self.vertices[0][index])
+            except IndexError:
+                raise IndexError("VolumeSourceSpace Index out of range: %i" % index)
+        else:
+            parc = None if self.parc is None else self.parc[index]
+            return VolumeSourceSpace(
+                [self.vertices[0][index]], self.subject, self.src,
+                self.subjects_dir, parc, self._subgraph(index), self.name)
+
+    def _as_uv(self):
+        return Factor(self.vertices[0], name=self.name)
+
+    def _compute_connectivity(self):
+        src = self.get_source_space()
+        coords = src[0]['rr'][self.vertices[0]]
+        dist_threshold = self.grade * 0.0011
+        return _point_graph(coords, dist_threshold)
+
+    def _array_index(self, arg):
+        if isinstance(arg, basestring):
+            m = re.match('\d+$', arg)
+            if m:
+                return np.searchsorted(self.vertices[0], int(m.groups(1)))
+        return SourceSpaceBase._array_index(self, arg)
+
+    def _dim_index(self, index):
+        if np.isscalar(index):
+            return str(self.vertices[0][index])
+        else:
+            return SourceSpaceBase._dim_index(self, index)
 
 
 class UTS(Dimension):
