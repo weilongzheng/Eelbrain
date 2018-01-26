@@ -12,7 +12,7 @@ import mne
 from mne.label import Label, BiHemiLabel
 from mne.utils import get_subjects_dir
 
-from ._data_obj import NDVar, SourceSpace
+from ._data_obj import NDVar, SourceSpace, VolumeSourceSpace
 from ._ndvar import set_parc
 
 
@@ -341,6 +341,12 @@ def morph_source_space(ndvar, subject_to, vertices_to=None, morph_mat=None,
     subjects_dir = source.subjects_dir
     subject_from = source.subject
     src = source.src
+    if isinstance(source, VolumeSourceSpace):
+        source_to = VolumeSourceSpace.from_file(subjects_dir, subject_to, src, None)
+        assert np.all(source_to.vertices[0] == source.vertices[0])
+        dims = list(ndvar.dims)
+        dims[ndvar.get_axis('source')] = source_to
+        return NDVar(ndvar.x, dims, ndvar.info.copy(), ndvar.name)
     has_lh_out = bool(source.rh_n if xhemi else source.lh_n)
     has_rh_out = bool(source.lh_n if xhemi else source.rh_n)
     assert_subject_exists(subject_to, subjects_dir)

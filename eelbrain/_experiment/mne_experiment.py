@@ -55,6 +55,7 @@ from .._mne import (
 from ..mne_fixes import (
     write_labels_to_annot, _interpolate_bads_eeg, _interpolate_bads_meg)
 from ..mne_fixes._trans import hsp_equal, mrk_equal
+from ..mne_fixes._source_space import merge_volume_source_space
 from .._ndvar import cwt_morlet
 from ..fmtxt import List, Report, Image, read_meta
 from .._report import named_list, enumeration, plural
@@ -100,6 +101,7 @@ COV_PARAMS = {'epoch', 'session', 'method', 'reg', 'keep_sample_mean',
               'reg_eval_win_pad'}
 
 
+SRC_RE = re.compile('(ico|vol)-(\d+)$')
 inv_re = re.compile("(free|fixed|loose\.\d+)-"  # orientation constraint
                     "(\d*\.?\d+)-"  # SNR
                     "(MNE|dSPM|sLORETA)"  # method
@@ -830,8 +832,7 @@ class MneExperiment(FileTree):
         self._register_field('parc', parc_values, 'aparc',
                              eval_handler=self._eval_parc)
         self._register_field('freq', self._freqs.keys())
-        self._register_field('src', ('ico-2', 'ico-3', 'ico-4', 'ico-5',
-                                     'vol-10', 'vol-7', 'vol-5'), 'ico-4')
+        self._register_field('src', default='ico-4', eval_handler=self._eval_src)
         self._register_field('connectivity', ('', 'link-midline'))
         self._register_field('select_clusters', self._cluster_criteria.keys())
 
@@ -3101,10 +3102,15 @@ class MneExperiment(FileTree):
             self.set(parc=mask)
             mask = True
         fwd_file = self.get('fwd-file', make=True)
+        src = self.get('src')
         if ndvar:
-            self.make_annot()
-            fwd = load.fiff.forward_operator(
-                fwd_file, self.get('src'), self.get('mri-sdir'), self.get('parc'))
+            if src.startswith('vol'):
+                parc = None
+                assert mask is None
+            else:
+                self.make_annot()
+                parc = self.get('parc')
+            fwd = load.fiff.forward_operator(fwd_file, src, self.get('mri-sdir'), parc)
             if mask:
                 fwd = fwd.sub(source=np.invert(
                     fwd.source.parc.startswith('unknown')))
@@ -5439,17 +5445,25 @@ class MneExperiment(FileTree):
             src = self.get('src')
             kind, param = src.split('-')
             if kind == 'vol':
-                mri = self.get('mri-file')
-                bem = self._load_bem()
-                mne.setup_volume_source_space(subject, dst, pos=float(param),
-                                              mri=mri, bem=bem, mindist=0.,
-                                              exclude=0.,
-                                              subjects_dir=self.get('mri-sdir'))
+                if subject == 'fsaverage':
+                    bem = self.get('bem-file')
+                else:
+                    raise NotImplementedError("Volume source space for subject "
+                                              "other than fsaverage")
+                hemis = ('Left', 'Right')
+                voi = ('Cerebral-Cortex', 'Cerebral-White-Matter')
+                sss = mne.setup_volume_source_space(
+                    subject, pos=float(param), bem=bem,
+                    mri=join(self.get('mri-dir'), 'mri', 'aseg.mgz'),
+                    volume_label=['%s-%s' % fmt for fmt in product(hemis, voi)],
+                    subjects_dir=self.get('mri-sdir'))
+                sss = merge_volume_source_space(sss, 'Eelbrain-volume')
             else:
                 spacing = kind + param
-                sss = mne.setup_source_space(subject, spacing=spacing, add_dist=True,
-                                             subjects_dir=self.get('mri-sdir'))
-                mne.write_source_spaces(dst, sss)
+                sss = mne.setup_source_space(
+                    subject, spacing=spacing, add_dist=True,
+                    subjects_dir=self.get('mri-sdir'))
+            mne.write_source_spaces(dst, sss)
 
     def _test_kwargs(self, samples, pmin, tstart, tstop, data, parc_dim):
         "Compile kwargs for testnd tests"
@@ -5981,7 +5995,7 @@ class MneExperiment(FileTree):
         if model == '':
             return model
         elif len(model) > 1 and '*' in model:
-            raise ValueError("Specify model with '%' instead of '*'")
+            raise ValueError("model=%r; To specify interactions, use '%' instead of '*'")
 
         factors = [v.strip() for v in model.split('%')]
 
@@ -6000,6 +6014,12 @@ class MneExperiment(FileTree):
         if unordered_factors:
             model.extend(unordered_factors)
         return '%'.join(model)
+
+    def _eval_src(self, src):
+        m = SRC_RE.match(src)
+        if not m:
+            raise ValueError('src=%r' % (src,))
+        return src
 
     def _update_mrisubject(self, fields):
         subject = fields['subject']

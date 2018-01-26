@@ -20,8 +20,8 @@ from mne.minimum_norm import prepare_inverse_operator, apply_inverse_raw
 from .. import _colorspaces as _cs
 from .._info import BAD_CHANNELS
 from .._utils import ui
-from .._data_obj import (Var, NDVar, Dataset, Sensor, SourceSpace, UTS,
-                         _matrix_graph)
+from .._data_obj import (Var, NDVar, Dataset, Case, Sensor, Space, SourceSpace,
+                         VolumeSourceSpace, Space, UTS, _matrix_graph)
 from ..mne_fixes import MNE_EVOKED, MNE_RAW
 
 
@@ -939,19 +939,26 @@ def forward_operator(fwd, src, subjects_dir=None, parc='aparc', name=None):
     fwd : NDVar  (sensor, source)
         NDVar containing the gain matrix.
     """
+    is_vol = src.startswith('vol')
     if isinstance(fwd, basestring):
         if name is None:
             name = os.path.basename(fwd)
         fwd = mne.read_forward_solution(fwd)
-        mne.convert_forward_solution(fwd, force_fixed=True, use_cps=True,
+        mne.convert_forward_solution(fwd, force_fixed=not is_vol, use_cps=True,
                                      copy=False)
     elif name is None:
         name = 'fwd'
     sensor = sensor_dim(fwd['info'])
     assert np.all(sensor.names == fwd['sol']['row_names'])
-    source = SourceSpace.from_mne_source_spaces(fwd['src'], src, subjects_dir,
-                                                parc)
-    return NDVar(fwd['sol']['data'], (sensor, source), {}, name)
+    if is_vol:
+        source = VolumeSourceSpace.from_mne_source_spaces(fwd['src'], src, subjects_dir, parc)
+        x = fwd['sol']['data'].reshape(((len(sensor), len(source), 3)))
+        dims = (sensor, source, Space('RAS'))
+    else:
+        source = SourceSpace.from_mne_source_spaces(fwd['src'], src, subjects_dir, parc)
+        x = fwd['sol']['data']
+        dims = (sensor, source)
+    return NDVar(x, dims, {}, name)
 
 
 def inverse_operator(inv, src, subjects_dir=None, parc='aparc', name=None):
@@ -1047,11 +1054,13 @@ def stc_ndvar(stc, subject, src, subjects_dir=None, method=None, fixed=None,
         x = np.array([s.data for s in stcs])
 
     # Construct NDVar Dimensions
-    time = UTS(stc.tmin, stc.tstep, stc.shape[1])
+    time = UTS(stc.tmin, stc.tstep, stc.times.size)
     if isinstance(stc, mne.VolSourceEstimate):
-        ss = SourceSpace([stc.vertices], subject, src, subjects_dir, parc)
+        ss = VolumeSourceSpace([stc.vertices], subject, src, subjects_dir, None)
+        is_vector = stc.data.ndim == 3
     else:
         ss = SourceSpace(stc.vertices, subject, src, subjects_dir, parc)
+        is_vector = isinstance(stc, mne.VectorSourceEstimate)
     # Apply connectivity modification
     if isinstance(connectivity, str):
         if connectivity == 'link-midline':
@@ -1061,10 +1070,11 @@ def stc_ndvar(stc, subject, src, subjects_dir=None, method=None, fixed=None,
     elif connectivity is not None:
         raise TypeError("connectivity=%s" % repr(connectivity))
     # assemble dims
+    dims = [ss, time]
+    if is_vector:
+        dims.insert(1, Space('RAS'))
     if case:
-        dims = ('case', ss, time)
-    else:
-        dims = (ss, time)
+        dims.insert(0, Case)
 
     # find the right measurement info
     info = {}
