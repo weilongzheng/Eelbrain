@@ -102,7 +102,7 @@ COV_PARAMS = {'epoch', 'session', 'method', 'reg', 'keep_sample_mean',
 
 
 SRC_RE = re.compile('(ico|vol)-(\d+)$')
-inv_re = re.compile("(free|fixed|loose\.\d+)-"  # orientation constraint
+inv_re = re.compile("(free|fixed|loose\.\d+|vec)-"  # orientation constraint
                     "(\d*\.?\d+)-"  # SNR
                     "(MNE|dSPM|sLORETA)"  # method
                     "(?:-((?:0\.)?\d+))?"  # depth weighting
@@ -5877,7 +5877,7 @@ class MneExperiment(FileTree):
 
         Parameters
         ----------
-        ori : 'free' | 'fixed' | float ]0, 1]
+        ori : 'free' | 'fixed' | 'vec' | float ]0, 1]
             Orientation constraint (default 'free'; use a float to specify a
             loose constraint).
         snr : scalar
@@ -5897,7 +5897,7 @@ class MneExperiment(FileTree):
     def _inv_str(ori, snr, method, depth, pick_normal):
         "Construct inv str from settings"
         if isinstance(ori, basestring):
-            if ori not in ('free', 'fixed'):
+            if ori not in ('free', 'fixed', 'vec'):
                 raise ValueError('ori=%r' % (ori,))
         elif not 0 <= ori <= 1:
             raise ValueError("ori=%r; must be in range [0, 1]" % (ori,))
@@ -5920,6 +5920,8 @@ class MneExperiment(FileTree):
             items.append('%g' % depth)
 
         if pick_normal:
+            if ori == 'vec':
+                raise ValueError("ori='vec' and pick_normal=True are incompatible")
             items.append('pick_normal')
 
         return '-'.join(items)
@@ -5937,8 +5939,9 @@ class MneExperiment(FileTree):
             if not 0 <= ori <= 1:
                 raise ValueError('inv=%r (first value of inv (loose '
                                  'parameter) needs to be in [0, 1]' % (inv,))
-        elif ori not in ('free', 'fixed'):
-            raise ValueError('inv=%r (ori=%r)' % (inv, ori))
+        elif ori == 'vec' and pick_normal:
+            raise ValueError("inv=%r (vector source estimates and pick_normal"
+                             "are mutually exclusive)")
 
         snr = float(snr)
         if snr <= 0:
@@ -5970,7 +5973,7 @@ class MneExperiment(FileTree):
 
         if ori == 'fixed':
             make_kw = {'fixed': True}
-        elif ori == 'free':
+        elif ori == 'free' or ori == 'vec':
             make_kw = {'loose': 1}
         elif isinstance(ori, float):
             make_kw = {'loose': ori}
@@ -5985,7 +5988,9 @@ class MneExperiment(FileTree):
             make_kw['depth'] = depth
 
         apply_kw = {'method': method, 'lambda2': 1. / snr ** 2}
-        if pick_normal:
+        if ori == 'vec':
+            apply_kw['pick_ori'] = 'vector'
+        elif pick_normal:
             apply_kw['pick_ori'] = 'normal'
 
         self._params['make_inv_kw'] = make_kw
