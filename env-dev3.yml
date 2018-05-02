@@ -41,7 +41,7 @@ dependencies:
 - pyarrow
 - wxpython >=4
 - nibabel >= 2.0
-- appnope
+- appnope [osx]
 #- pysurfer >= 0.7
 # building
 - setuptools >= 17
