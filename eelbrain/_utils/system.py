@@ -1,11 +1,8 @@
 # Author: Christian Brodbeck <christianbrodbeck@nyu.edu>
 from contextlib import ContextDecorator
-from distutils.version import LooseVersion
 import os
-import platform
-from subprocess import Popen
 import sys
-from warnings import warn
+from .app_nap import disable_sleep, endActivity
 
 IS_OSX = sys.platform == 'darwin'
 IS_WINDOWS = os.name == 'nt'
@@ -18,13 +15,13 @@ class Caffeinator(ContextDecorator):
 
     def __enter__(self):
         if self.n_processes == 0 and IS_OSX:
-            self._popen = Popen('caffeinate')
+            self._activity = disable_sleep()
         self.n_processes += 1
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.n_processes -= 1
         if self.n_processes == 0 and IS_OSX:
-            self._popen.terminate()
+            endActivity(self._activity)
 
 
 caffeine = Caffeinator()

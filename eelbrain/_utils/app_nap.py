@@ -118,8 +118,9 @@ def sleep_disabled(reason='Eelbrain potentially long-running computation'):
 
     Within this context, App Nap will be disabled.
     """
-    activity = beginActivityWithOptions(NSActivityUserInitiated | NSActivityLatencyCritical, reason)
+    # activity = beginActivityWithOptions(NSActivityUserInitiated | NSActivityLatencyCritical, reason)
     try:
         yield
     finally:
-        endActivity(activity)
+        pass
+    #     endActivity(activity)
