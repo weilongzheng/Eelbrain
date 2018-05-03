@@ -8,17 +8,6 @@ from warnings import warn
 
 IS_OSX = sys.platform == 'darwin'
 IS_WINDOWS = os.name == 'nt'
-if IS_OSX:
-    import appnope
-
-    def disable_appnap():
-        print('abbnope on')
-        appnope.nope()
-else:
-    appnope = None
-
-    def disable_appnap():
-        pass
 
 
 class Caffeinator(object):
@@ -42,15 +31,12 @@ class Caffeinator(object):
     def __enter__(self):
         if self.n_processes == 0 and self.enabled:
             self._popen = Popen('caffeinate')
-            self._nope = appnope.nope_scope()
-            self._nope.__enter__()
         self.n_processes += 1
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.n_processes -= 1
         if self.n_processes == 0 and self.enabled:
             self._popen.terminate()
-            self._nope.__exit__(exc_type, exc_val, exc_tb)
 
 
 caffeine = Caffeinator()

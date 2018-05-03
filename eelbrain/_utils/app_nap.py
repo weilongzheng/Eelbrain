@@ -26,9 +26,8 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+# cf. https://github.com/ipython/ipython/tree/master/IPython/terminal/pt_inputhooks/osx.py
 from contextlib import contextmanager
-
-import ctypes
 import ctypes.util
 
 objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library('objc'))
@@ -73,15 +72,6 @@ NSActivityBackground = 0x000000FF
 NSActivityLatencyCritical = 0xFF00000000
 
 
-def disable_sleep(reason='Eelbrain potentially long-running computation'):
-    """Disable macOS system sleep
-
-
-    ???Freezes child process when parent process runs in nope context
-    """
-    return beginActivityWithOptions(NSActivityUserInitiated | NSActivityIdleSystemSleepDisabled, reason)
-
-
 def beginActivityWithOptions(options, reason=""):
     """Begin an activity using the given options and reason
 
@@ -113,29 +103,13 @@ def endActivity(activity):
     msg(info, n("endActivity:"), void_p(activity))
 
 
-_theactivity = None
+def disable_sleep(reason='Eelbrain potentially long-running computation'):
+    """Disable macOS system sleep
 
 
-def nope():
-    """disable App Nap by setting NSActivityUserInitiatedAllowingIdleSystemSleep"""
-    # global _theactivity
-    _theactivity = beginActivityWithOptions(
-        NSActivityUserInitiatedAllowingIdleSystemSleep,
-        "Because Reasons"
-    )
-
-
-# def nap():
-#     """end the caffeinated state started by `nope`"""
-#     # global _theactivity
-#     if _theactivity is not None:
-#         endActivity(_theactivity)
-#         _theactivity = None
-
-
-def napping_allowed():
-    """is napping allowed?"""
-    return _theactivity is None
+    ???Freezes child process when parent process runs in nope context
+    """
+    return beginActivityWithOptions(NSActivityUserInitiated | NSActivityLatencyCritical, reason)
 
 
 @contextmanager
@@ -144,7 +118,7 @@ def sleep_disabled(reason='Eelbrain potentially long-running computation'):
 
     Within this context, App Nap will be disabled.
     """
-    activity = beginActivityWithOptions(NSActivityUserInitiated | NSActivityIdleSystemSleepDisabled, reason)
+    activity = beginActivityWithOptions(NSActivityUserInitiated | NSActivityLatencyCritical, reason)
     try:
         yield
     finally:
