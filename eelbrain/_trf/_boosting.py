@@ -28,6 +28,7 @@ from tqdm import tqdm
 from .._config import CONFIG
 from .._data_obj import NDVar
 from .._utils import LazyProperty
+from .._utils.system import disable_appnap
 from ._boosting_opt import l1, l2, generate_options, update_error
 from .shared import RevCorrData
 
@@ -524,6 +525,7 @@ def setup_workers(y, x, trf_length, delta, mindelta, nsegs, error):
 
 def boosting_worker(y_buffer, x_buffer, n_y, n_times, n_x, trf_length,
                     delta, mindelta, nsegs, error, job_queue, result_queue):
+    disable_appnap()
     if CONFIG['nice']:
         os.nice(CONFIG['nice'])
     signal.signal(signal.SIGINT, signal.SIG_IGN)

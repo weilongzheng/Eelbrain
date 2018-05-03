@@ -10,8 +10,15 @@ IS_OSX = sys.platform == 'darwin'
 IS_WINDOWS = os.name == 'nt'
 if IS_OSX:
     import appnope
+
+    def disable_appnap():
+        print('abbnope on')
+        appnope.nope()
 else:
     appnope = None
+
+    def disable_appnap():
+        pass
 
 
 class Caffeinator(object):
