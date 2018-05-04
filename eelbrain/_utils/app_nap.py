@@ -60,8 +60,11 @@ def C(classname):
     return objc.objc_getClass(_utf8(classname))
 
 
-# constants from Foundation
+NSProcessInfo = objc.objc_getClass(b'NSProcessInfo')
+NSString = objc.objc_getClass(b'NSString')
 
+
+# constants from Foundation
 NSActivityIdleDisplaySleepDisabled = (1 << 40)
 NSActivityIdleSystemSleepDisabled = (1 << 20)
 NSActivitySuddenTerminationDisabled = (1 << 14)
@@ -83,13 +86,11 @@ def beginActivityWithOptions(options, reason=""):
     Notes
     -----
     Indicate completion of the activity by calling :func:`endActivity` passing the returned object as the argument.    """
-    NSProcessInfo = C('NSProcessInfo')
-    NSString = C('NSString')
-
-    reason = msg(NSString, n("stringWithUTF8String:"), _utf8(reason))
-    info = msg(NSProcessInfo, n('processInfo'))
+    reason = msg(NSString, n(b'stringWithUTF8String:'), _utf8(reason))
+    info = msg(NSProcessInfo, n(b'processInfo'))
+    # the next command is where multiple activity declaration hangs
     activity = msg(info,
-                   n('beginActivityWithOptions:reason:'),
+                   n(b'beginActivityWithOptions:reason:'),
                    ull(options),
                    void_p(reason)
                    )
@@ -98,7 +99,6 @@ def beginActivityWithOptions(options, reason=""):
 
 def endActivity(activity):
     """end a process activity assertion"""
-    NSProcessInfo = C('NSProcessInfo')
     info = msg(NSProcessInfo, n('processInfo'))
     msg(info, n("endActivity:"), void_p(activity))
 

@@ -257,7 +257,6 @@ def boosting(y, x, tstart, tstop, scale_data=True, delta=0.005, mindelta=None,
             y_data, x_data, trf_length, delta, mindelta_, N_SEGS, error)
         stop_jobs = Event()
         thread = Thread(target=put_jobs, args=(job_queue, n_y, N_SEGS, stop_jobs))
-        thread.daemon = True
         thread.start()
 
         # collect results
@@ -518,7 +517,6 @@ def setup_workers(y, x, trf_length, delta, mindelta, nsegs, error):
             mindelta, nsegs, error, job_queue, result_queue)
     for _ in range(CONFIG['n_workers']):
         process = Process(target=boosting_worker, args=args)
-        process.daemon = True
         process.start()
 
     return job_queue, result_queue
