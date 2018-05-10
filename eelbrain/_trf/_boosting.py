@@ -525,6 +525,11 @@ def setup_workers(y, x, trf_length, delta, mindelta, nsegs, error):
 
 def boosting_worker(y_buffer, x_buffer, n_y, n_times, n_x, trf_length,
                     delta, mindelta, nsegs, error, job_queue, result_queue):
+    from .._utils.macos import beginActivityWithOptions, end_activity, NSActivityUserInitiated
+    import random
+
+    activity = beginActivityWithOptions(NSActivityUserInitiated, "process %i" % random.randint())
+
     if CONFIG['nice']:
         os.nice(CONFIG['nice'])
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -535,6 +540,7 @@ def boosting_worker(y_buffer, x_buffer, n_y, n_times, n_x, trf_length,
     while True:
         y_i, seg_i = job_queue.get()
         if y_i == JOB_TERMINATE:
+            end_activity(activity)
             return
         h = boost_1seg(x, y[y_i], trf_length, delta, nsegs, seg_i, mindelta,
                        error)
