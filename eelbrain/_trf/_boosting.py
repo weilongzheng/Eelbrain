@@ -526,9 +526,8 @@ def setup_workers(y, x, trf_length, delta, mindelta, nsegs, error):
 def boosting_worker(y_buffer, x_buffer, n_y, n_times, n_x, trf_length,
                     delta, mindelta, nsegs, error, job_queue, result_queue):
     from .._utils.macos import beginActivityWithOptions, end_activity, NSActivityUserInitiated
-    import random
 
-    activity = beginActivityWithOptions(NSActivityUserInitiated, "process %i" % random.randint())
+    activity = beginActivityWithOptions(NSActivityUserInitiated, "boosting %i" % os.getpid())
 
     if CONFIG['nice']:
         os.nice(CONFIG['nice'])
