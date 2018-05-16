@@ -174,7 +174,6 @@ class BoostingResult(object):
             setattr(self, attr, sub_func(getattr(self, attr)))
 
 
-@caffeine
 def boosting(y, x, tstart, tstop, scale_data=True, delta=0.005, mindelta=None,
              error='l2'):
     """Estimate a temporal response function through boosting
@@ -527,7 +526,7 @@ def boosting_worker(y_buffer, x_buffer, n_y, n_times, n_x, trf_length,
                     delta, mindelta, nsegs, error, job_queue, result_queue):
     from .._utils.macos import beginActivityWithOptions, end_activity, NSActivityUserInitiated
 
-    activity = beginActivityWithOptions(NSActivityUserInitiated, "boosting %i" % os.getpid())
+    activity = beginActivityWithOptions(NSActivityUserInitiated, "Eelbrain boosting %i" % os.getpid())
 
     if CONFIG['nice']:
         os.nice(CONFIG['nice'])
