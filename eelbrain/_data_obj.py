@@ -9027,8 +9027,13 @@ class VolumeSourceSpace(SourceSpaceBase):
         dist_threshold = self.grade * 0.0011
         return _point_graph(coords, dist_threshold)
 
+    def _distances(self):
+        sss = self.get_source_space()
+        coords = sss[0]['rr'][self.vertices[0]]
+        return squareform(pdist(coords))
+
     def _array_index(self, arg):
-        if isinstance(arg, basestring):
+        if isinstance(arg, str):
             m = re.match('\d+$', arg)
             if m:
                 return np.searchsorted(self.vertices[0], int(m.groups(1)))
