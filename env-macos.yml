@@ -1,0 +1,13 @@
+# Environment for stable release on macOS
+# usage: $ conda env create --file=env-macos.yml
+name: eelbrain
+channels:
+- conda-forge
+- defaults
+- christianbrodbeck
+dependencies:
+- python >= 3.6
+- pip
+- eelbrain
+- pip:
+  - mayavi
